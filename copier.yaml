@@ -1,5 +1,5 @@
 # copier.yaml
-_min_copier_version: "6.0.0" # Đảm bảo Copier có phiên bản tối thiểu cần thiết
+_min_copier_version: ">=9.0.0" # Yêu cầu Copier 9+ để tránh cảnh báo và tương thích tốt hơn
 
 project_name:
   type: str
@@ -16,9 +16,13 @@ install_deps:
   help: Có cài đặt dependencies ngay không? (pip install -r requirements.txt)
   default: true
 
-_tasks: # Hooks để chạy lệnh sau khi sao chép
+_tasks: # Hooks để chạy lệnh sau khi sao chép (cross-platform)
+  # 1) Tạo venv tại thư mục dự án mới
   - python -m venv .venv
-  - . .venv/bin/activate && pip install -r backend/requirements.txt
+
+  # 2) Cài đặt requirements bằng Python trong venv theo cách đa nền tảng
+  #    Tránh dùng lệnh kích hoạt shell (source/.) để tương thích Windows và Linux/macOS
+  - python -c "import os,subprocess,sys; from pathlib import Path; venv_py = Path('.venv') / ('Scripts/python.exe' if os.name=='nt' else 'bin/python'); subprocess.check_call([str(venv_py), '-m', 'pip', 'install', '-r', 'backend/requirements.txt'])"
 
 _exclude: # Files không sao chép
   - venv/
