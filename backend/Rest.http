@@ -1,0 +1,15 @@
+@BASE_URL = http://localhost:8006
+
+
+GET {{BASE_URL}}/users/1
+content-type: application/json
+
+###
+
+POST {{BASE_URL}}/users
+content-type: application/json
+
+{
+    "name": "sample",
+    "email": "sample@example.com"
+}

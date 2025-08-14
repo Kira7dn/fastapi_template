@@ -1,0 +1,27 @@
+# copier.yaml
+_min_copier_version: "6.0.0" # Đảm bảo Copier có phiên bản tối thiểu cần thiết
+
+project_name:
+  type: str
+  help: Tên dự án FastAPI của bạn
+  default: "My Awesome FastAPI App"
+
+author_name:
+  type: str
+  help: Tên của tác giả
+  default: "Your Name"
+
+install_deps:
+  type: bool
+  help: Có cài đặt dependencies ngay không? (pip install -r requirements.txt)
+  default: true
+
+_tasks: # Hooks để chạy lệnh sau khi sao chép
+  - python -m venv .venv
+  - . .venv/bin/activate && pip install -r backend/requirements.txt
+
+_exclude: # Files không sao chép
+  - venv/
+  - .venv/
+  - .git/
+  - .vscode/
