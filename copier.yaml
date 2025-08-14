@@ -1,5 +1,5 @@
 # copier.yaml
-_min_copier_version: ">=9.0.0" # Yêu cầu Copier 9+ để tránh cảnh báo và tương thích tốt hơn
+_min_copier_version: "9.0.0" # Yêu cầu Copier 9+ để tránh cảnh báo và tương thích tốt hơn
 
 project_name:
   type: str
