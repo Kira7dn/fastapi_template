@@ -29,3 +29,7 @@ _exclude: # Files không sao chép
   - .venv/
   - .git/
   - .vscode/
+  - .windsurf/
+  - .gitignore
+  - requirements.txt
+  - backend/alembic/versions/*

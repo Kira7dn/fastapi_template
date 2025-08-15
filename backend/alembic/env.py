@@ -5,13 +5,19 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 import os
 import sys
+from pathlib import Path
 
-# Thêm đường dẫn app
-sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
+# Ensure the 'backend' directory is on sys.path so `from app...` imports work
+CURRENT_FILE = Path(__file__).resolve()
+BACKEND_DIR = CURRENT_FILE.parents[1]  # .../backend
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from app.core.config import settings
 from app.infrastructure.database.base import Base
-from app.domain.models import user  # import models để Alembic detect
+
+# Import ORM models so Alembic can detect them
+from app.infrastructure.repositories import user  # noqa: F401
 
 # Cấu hình Alembic
 config = context.config

@@ -13,8 +13,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Nếu muốn seed dữ liệu khi init lần đầu, tạo thư mục init-scripts và bỏ file .sql vào đó
-      # - ./init-scripts:/docker-entrypoint-initdb.d
 
   pgadmin:
     image: dpage/pgadmin4:latest

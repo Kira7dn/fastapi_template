@@ -16,6 +16,7 @@ __pycache__/
 .idea/
 *.swp
 *.swo
+.windsurf
 
 # OS
 .DS_Store
@@ -34,4 +35,8 @@ tests/
 
 postgres_data
 
-alembic/versions/
+backend/alembic/versions/
+.coverage
+pytest.ini
+.pylintrc
+requirements.txt

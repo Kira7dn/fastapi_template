@@ -1,4 +1,4 @@
-from app.domain.entities.user import User
+from backend.app.domain.entities.user import User
 from sklearn.metrics.pairwise import cosine_similarity  # Import AI lib
 import numpy as np
 

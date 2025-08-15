@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends
 
-from app.application.use_cases.user import CreateUserUseCase, RecommendUsersUseCase
+from app.application.use_cases.user import (
+    CreateUserUseCase,
+    RecommendUsersUseCase,
+)
 from app.presentation.api.v1.dependencies.user import get_user_repo
 from app.presentation.api.v1.schemas.user import (
     CreateUserRequest,
