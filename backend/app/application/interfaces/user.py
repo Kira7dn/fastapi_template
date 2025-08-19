@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from app.domain.entities.user import User
 
 
-class UserRepositoryInterface(ABC):
+class IUserRepository(ABC):
     @abstractmethod
     def create(self, user: User) -> User:
         pass

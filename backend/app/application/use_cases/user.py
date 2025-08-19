@@ -1,10 +1,10 @@
-from app.application.interfaces.user import UserRepositoryInterface
+from app.application.interfaces.user import IUserRepository
 from app.domain.entities.user import User
 from app.domain.services.user import RecommendationService
 
 
 class CreateUserUseCase:
-    def __init__(self, repo: UserRepositoryInterface):
+    def __init__(self, repo: IUserRepository):
         self.repo = repo
 
     def execute(self, name: str, email: str, preferences: list[str]) -> User:
@@ -15,7 +15,7 @@ class CreateUserUseCase:
 
 
 class RecommendUsersUseCase:
-    def __init__(self, repo: UserRepositoryInterface):
+    def __init__(self, repo: IUserRepository):
         self.repo = repo
         self.rec_service = RecommendationService()
 

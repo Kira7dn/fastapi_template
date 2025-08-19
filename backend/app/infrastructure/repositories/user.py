@@ -1,19 +1,10 @@
-from sqlalchemy import Column, Integer, String, ARRAY
 from sqlalchemy.orm import Session
-from app.application.interfaces.user import UserRepositoryInterface
+from app.application.interfaces.user import IUserRepository
 from app.domain.entities.user import User
-from app.infrastructure.database.base import Base
+from app.infrastructure.models.user import UserModel
 
 
-class UserModel(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    email = Column(String, unique=True)
-    preferences = Column(ARRAY(String))  # Cho AI data
-
-
-class UserRepository(UserRepositoryInterface):
+class UserRepository(IUserRepository):
     def __init__(self, db: Session):
         self.db = db
 

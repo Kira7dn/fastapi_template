@@ -16,7 +16,6 @@ __pycache__/
 .idea/
 *.swp
 *.swo
-.windsurf
 
 # OS
 .DS_Store
