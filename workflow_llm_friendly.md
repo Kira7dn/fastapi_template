@@ -88,8 +88,6 @@ backend/app/
 - Define entities with Pydantic BaseModel and validators.
 - Define services containing business/AI logic (import libs like numpy, sklearn as needed).
 - No external deps (no DB, HTTP, file I/O).
-- Keep AI logic pure and testable.
-- Risks: Complex AI logic is hard to test (solution: keep it pure, train offline if needed); Missing validation (solution: Pydantic validators).
 
 **[Sample Code]**
 
