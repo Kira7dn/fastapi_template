@@ -40,7 +40,7 @@ Generate domain classes and services from JSON input with tests and GitHub integ
 ### Step 1 – Generate Entities
 
 - **Location**: `backend/app/domain/entities/{snake_case(class_name)}.py`
-- **Action**: Parse JSON for `layer == "domain/*"`, create Pydantic BaseModel with:
+- **Action**: Parse JSON for `layer == "domain/entity"`, create Pydantic BaseModel with:
   - All fields from `attributes`
   - Validators for non-empty strings/lists, non-negative numbers, enum constraints
   - Methods from `methods` array with exact signatures
@@ -138,14 +138,6 @@ venv/bin/python -m pytest backend/tests/unit -m "not slow and not integration an
 **Artifacts**: Coverage HTML (`backend/tests/test_output/coverage/`), JUnit XML, logs
 
 ### Step 5 – Push & Update JSON
-
-**Git Push**:
-
-```bash
-git add backend/app/domain/entities/ backend/app/domain/services/ backend/tests/unit/
-git commit -m "chore(domain): add/update generated entities and services" || true
-git push origin main
-```
 
 **Update Input JSON** with generated file locations:
 
