@@ -3,151 +3,227 @@ description: Generate Presentation Class Workflow
 auto_execution_mode: 3
 ---
 
-Generate Presentation layer artifacts: request/response schemas, DI dependencies, and FastAPI routers that call Application use cases. Aligns with Onion/Clean Architecture and the directory map in `workflow_llm_friendly.md`.
+Generate Presentation layer artifacts: schemas, dependencies, and routers.
 
 ## Input JSON Schema
+
+Supported layers: `domain/entity`, `domain/service`, `application/interface`, `application/use_case`, `infrastructure/model`, `infrastructure/repository`, `infrastructure/adapter`, `presentation/schema`, `presentation/dependency`, `presentation/router`.
+
+Note (Scope): This workflow processes only `presentation/schema`, `presentation/dependency`, and `presentation/router`. Other layers are handled by their dedicated workflows.
 
 ```json
 [
   {
-    "class_name": "Product",
-    "layer": "presentation/schema",
-    "description": "Request/response schemas for Product endpoints",
-    "schemas": [
-      { "name": "CreateProductRequest", "fields": ["name: str", "category: str", "price_range: str"] },
-      { "name": "ProductResponse", "fields": ["id: int", "name: str", "category: str", "price_range: str"] }
-    ]
-  },
-  {
-    "class_name": "ProductDependencies",
-    "layer": "presentation/dependency",
-    "description": "Factories for injecting infrastructure implementations",
-    "factories": [
-      { "name": "get_product_repo", "returns": "app.application.interfaces.product.IProductRepository", "impl": "app.infrastructure.repositories.product.ProductRepository", "params": ["db: Session = Depends(get_db)"] }
-    ]
-  },
-  {
-    "class_name": "ProductRouter",
-    "layer": "presentation/router",
-    "description": "FastAPI router for product endpoints",
-    "prefix": "/products",
-    "tags": ["products"],
-    "endpoints": [
+    "class_name": "YourClassName",
+    "layer": "domain/entity | domain/service | application/interface | application/use_case | infrastructure/model | infrastructure/repository | infrastructure/adapter | presentation/schema | presentation/dependency | presentation/router",
+    "description": "Short purpose of this class",
+    "attributes": ["field_name: type"],
+    "methods": [
       {
-        "path": "",
-        "method": "post",
-        "name": "create_product",
-        "request_model": "CreateProductRequest",
-        "response_model": "ProductResponse",
-        "use_case": "app.application.use_cases.create_product_use_case.CreateProductUseCase",
-        "dependencies": ["get_product_repo"],
-        "handler": "return CreateProductUseCase(repo).execute(request.name, request.category, request.price_range)"
+        "method_name": "method_name",
+        "description": "Optional short method description",
+        "parameters": ["arg1: type", "arg2: type"],
+        "return_type": "ReturnType"
       }
-    ]
+    ],
+    "dependencies": ["IExamplePort"]
   }
 ]
 ```
 
+## Variable Naming Convention
+
+- `{base_name}`: Derived from `class_name` by stripping CRUD prefixes/suffixes (e.g., `CreateOrderRequest` → `order`)
+- `{snake_base}`: Snake case of base_name (e.g., `order`)
+- `{Base}`: Pascal case of base_name (e.g., `Order`)
+- `{plural_snake_base}`: Plural snake case (e.g., `orders`)
+
 ## Rules
 
-- **Schemas**: Pydantic `BaseModel` only. No business logic. Keep field names/types aligned with Domain entities/use case contracts.
-- **Dependencies (DI)**: Provide factories in `presentation/api/v1/dependencies/` returning Application interfaces implemented by Infrastructure classes. Read config via `app/core/config.py` as needed.
-- **Routers**: Thin endpoints that validate input, call Use Case, and return schema. No direct access to Infrastructure in routers; use DI to inject interfaces.
-- **Imports**: stdlib + `fastapi`, `pydantic`, Application use cases/interfaces, DI factories, domain entities for model validation where necessary.
-- **Testing**: API tests with `httpx.AsyncClient` (ASGI). Use dependency overrides for adapters/repos. Markers: `e2e` or `integration` accordingly.
-- **Idempotency**: Only overwrite files for classes present in current JSON.
+- **Scope**: Process only items where `layer` is `presentation/schema`, `presentation/dependency`, or `presentation/router`. Ignore other layers (handled by their dedicated workflows).
+- **Idempotent**: only touch items present in current JSON; same-base DTOs share one schema module.
+- **External references**: prefer real imports to upstream contracts/types. If unavailable, keep intended import commented and add minimal local placeholder (see Appendix for Protocol example).
+- **Router prefixing**: choose ONE place for prefix - either in `APIRouter(prefix=...)` OR in `include_router(..., prefix=...)`, never both.
+- **Pluralization**: use plural snake_case resource names for router prefixes (e.g., `/users`, `/orders`). Irregulars: `person -> people`, `category -> categories`.
+- **DI typing**: DI providers must return Application interfaces (Protocols/ABCs), not concrete classes. This keeps Presentation decoupled from Infrastructure.
 
 ## Steps
 
-### Step 1 – Generate Schemas
+### Step 1 – Schemas
 
 - **Location**: `backend/app/presentation/api/v1/schemas/{snake_case(base_name)}.py`
-- **Action**: For `layer == "presentation/schema"`, create Pydantic models for request/response with fields from JSON.
+- **Action**:
+  - Derive `base_name`: strip CRUD prefixes (`Create`, `Update`, `Delete`) and suffixes (`Request`, `Response`)
+  - Generate Pydantic `BaseModel` classes from JSON `class_name` and `attributes`
+  - Map `"name: type"` attributes to model fields
+  - Add docstring from `description` if present
+  - Group related DTOs (same base name) in one module
 
-**Sample**:
-
-```python
-# backend/app/presentation/api/v1/schemas/product.py
-from pydantic import BaseModel
-
-class CreateProductRequest(BaseModel):
-    name: str
-    category: str
-    price_range: str
-
-class ProductResponse(BaseModel):
-    id: int
-    name: str
-    category: str
-    price_range: str
-```
-
-### Step 2 – Generate Dependencies (DI Factories)
+### Step 2 – Dependencies
 
 - **Location**: `backend/app/presentation/api/v1/dependencies/{snake_case(base_name)}.py`
-- **Action**: For `layer == "presentation/dependency"`, create dependency providers returning concrete implementations of Application interfaces.
+- **Action**:
+  - Create DI provider functions: `get_{snake_base}_repo()`, `get_{snake_base}_adapter()`, or `get_{snake_base}_client()`
+  - Return concrete implementations typed as Application interfaces
+  - For repositories: inject `db: Session = Depends(get_db)`
+  - Use Protocol placeholder if interface not available (see Appendix A.4)
 
-**Sample**:
-
-```python
-# backend/app/presentation/api/v1/dependencies/product.py
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from app.core.db import get_db
-from app.infrastructure.repositories.product import ProductRepository
-
-def get_product_repo(db: Session = Depends(get_db)):
-    return ProductRepository(db)
-```
-
-### Step 3 – Generate Routers
+### Step 3 – Routers
 
 - **Location**: `backend/app/presentation/api/v1/routers/{snake_case(base_name)}.py`
-- **Action**: For `layer == "presentation/router"`, create FastAPI `APIRouter` with endpoints defined in JSON. Use DI factories to resolve dependencies. Instantiate and call the specified Use Case.
+- **Action**:
+  - Create `router = APIRouter(prefix="/{plural_snake_base}", tags=["{plural_snake_base}"])`
+  - Generate endpoint functions from JSON `methods`
+  - Inject dependencies via `Depends(get_{snake_base}_repo)`
+  - Call use cases: `{Action}{Base}UseCase(repo).execute(...)` and return response schema
+  - Use case naming: `Create/Get/List/Update/Delete{Base}UseCase`
+  - Keep handlers thin: validate → use case → return DTO
 
-**Sample**:
+Validation & Error Handling
 
-```python
-# backend/app/presentation/api/v1/routers/product.py
-from fastapi import APIRouter, Depends
-from app.application.use_cases.create_product_use_case import CreateProductUseCase
-from app.presentation.api.v1.dependencies.product import get_product_repo
-from app.presentation.api.v1.schemas.product import CreateProductRequest, ProductResponse
+- Validate requests via Pydantic schemas. Prefer constrained types and validators in schemas when possible.
+- Map exceptions to HTTP:
+  - `ValueError`/Pydantic `ValidationError` → 400/422
+  - `LookupError` → 404
+  - `PermissionError` → 403
+  - Unexpected → 500 (avoid leaking details)
 
-router = APIRouter(prefix="/products", tags=["products"])
+API Error Schema (suggested)
 
-@router.post("", response_model=ProductResponse)
-def create_product(request: CreateProductRequest, repo=Depends(get_product_repo)):
-    product = CreateProductUseCase(repo).execute(
-        request.name, request.category, request.price_range
-    )
-    return ProductResponse.model_validate(product)
+```json
+{
+  "type": "string",
+  "title": "string",
+  "detail": "string",
+  "status": 400,
+  "instance": "string",
+  "errors": { "field": ["message"] }
+}
 ```
+
+Note: For naming and irregular plurals, see the "Naming & Pluralization Rules" section in `workflow_llm_friendly.md`.
 
 ### Step 4 – Register Routers
 
-- **Location**: `backend/app/presentation/main.py` (or your root app file)
-- **Action**: Include routers into the FastAPI app.
+- **Location**: `backend/app/presentation/main.py`
+- **Action**:
+  - Import router: `from app.presentation.api.v1.routers.{snake_base} import router as {snake_base}_router`
+  - Include in app: `app.include_router({snake_base}_router)`
+  - Avoid double prefix (router already has prefix)
 
-**Sample**:
+### Step 5 – Tests
 
-```python
-# backend/app/presentation/main.py
-from fastapi import FastAPI
-from app.presentation.api.v1.routers.product import router as product_router
+- **Location**: `backend/tests/e2e/test_{snake_base}_api.py`
+- **Action**:
+  - Use `httpx.AsyncClient` with FastAPI app
+  - Override dependencies: `app.dependency_overrides[get_{snake_base}_repo] = lambda: MockRepo()`
+  - Test endpoints with representative payloads
+  - Assert status codes (201 for create, 200 for get/update, 204 for delete)
+  - Assert response structure and required fields
 
-app = FastAPI()
-app.include_router(product_router)
+Tham khảo: Appendix A.3 (Router) và A.4 (API/E2E Test) để xem ví dụ chi tiết.
+
+### Step 6 – Update JSON
+
+- **Action**: Add `code_path` and `code_raw_url` fields to each generated class in JSON
+- **Format**: `https://raw.githubusercontent.com/Kira7dn/fastapi_template/main/{path}`
+
+### Step 7 – Run Tests
+
+```bash
+.venv/bin/python -m pytest -m e2e -v
 ```
 
-### Step 5 – Tests (API / E2E)
+## Artifacts
 
-- **Location**: `backend/tests/e2e/test_{snake_case}_api.py` or `backend/tests/integration/presentation/test_{snake_case}_router.py`
-- **Action**: Use `httpx.AsyncClient` to test endpoints. Override dependencies for external systems.
+- Schemas: `backend/app/presentation/api/v1/schemas/{snake_base}.py`
+- Dependencies: `backend/app/presentation/api/v1/dependencies/{snake_base}.py`
+- Routers: `backend/app/presentation/api/v1/routers/{snake_base}.py`
+- Tests: `backend/tests/e2e/test_{snake_base}_api.py`
 
-**Sample**:
+## Appendix
+
+### A.1 Schema Template
 
 ```python
+# backend/app/presentation/api/v1/schemas/{snake_base}.py
+from pydantic import BaseModel
+from typing import Optional
+
+class Create{Base}Request(BaseModel):
+    """Request DTO for creating a {snake_base}."""
+    name: str
+    description: Optional[str] = None
+
+class {Base}Response(BaseModel):
+    """Response DTO representing a {snake_base}."""
+    id: int
+    name: str
+    description: Optional[str] = None
+```
+
+### A.2 Dependency
+
+```python
+# Repository DI — DB-backed repository
+# backend/app/presentation/api/v1/dependencies/{snake_base}.py
+from fastapi import Depends
+from sqlalchemy.orm import Session
+from app.core.db import get_db
+
+from app.application.interfaces.some_repo import ISomeRepo
+from app.infrastructure.repositories.some_repo import SomeRepo
+
+def get_some_repo(db: Session = Depends(get_db)) -> ISomeRepo:
+    """Repository provider: persistence-focused operations."""
+    return SomeRepo(db)
+```
+
+```python
+# Adapter DI — External HTTP/SDK client
+# backend/app/presentation/api/v1/dependencies/{name}.py
+from fastapi import Depends
+
+from app.application.interfaces.payment_adapter import IPaymentAdapter
+from app.infrastructure.adapters.payment_adapter import PaymentAdapter
+from app.core.config import settings  # read from env-backed config
+
+def get_payment_adapter() -> IPaymentAdapter:
+    """Adapter/Client provider: integration with external payment service."""
+    # Adapt attribute names to your settings schema
+    return PaymentAdapter(base_url=settings.payment_base_url, token=settings.payment_token)
+```
+
+### A.3 Router
+
+```python
+# backend/app/presentation/api/v1/routers/{snake_base}.py
+from fastapi import APIRouter, Depends
+from app.presentation.api.v1.dependencies.{snake_base} import get_{snake_base}_repo
+from app.presentation.api.v1.schemas.{snake_base} import Create{Base}Request, {Base}Response
+from app.application.use_cases.create_{snake_base}_use_case import Create{Base}UseCase
+from app.application.use_cases.get_{snake_base}_use_case import Get{Base}UseCase
+
+router = APIRouter(prefix="/{plural_snake_base}", tags=["{plural_snake_base}"])
+
+@router.post("", response_model={Base}Response, status_code=201)
+def create_{snake_base}(request: Create{Base}Request, repo=Depends(get_{snake_base}_repo)):
+    entity = Create{Base}UseCase(repo).execute(
+        name=request.name,
+        description=request.description
+    )
+    return {Base}Response.model_validate(entity)
+
+@router.get("/{id}", response_model={Base}Response)
+def get_{snake_base}(id: int, repo=Depends(get_{snake_base}_repo)):
+    entity = Get{Base}UseCase(repo).execute(id)
+    return {Base}Response.model_validate(entity)
+```
+
+### A.4 API/E2E Test
+
+```python
+# Example uses "Product" as an illustration; adapt names to your {Base}.
 # backend/tests/e2e/test_product_api.py
 import pytest
 from httpx import AsyncClient
@@ -171,62 +247,11 @@ async def test_product_create_flow():
     async with AsyncClient(app=app, base_url="http://test") as ac:
         data = {"name": "Laptop", "category": "electronics", "price_range": "high"}
         res = await ac.post("/products", json=data)
-        assert res.status_code == 200
+        assert res.status_code == 201
         body = res.json()
         assert body["id"] > 0
 
     app.dependency_overrides.clear()
+
+Note: Prefer realistic fakes over heavy mocks. See `generate-application-class.md` Appendix for fake repository patterns you can reuse across layers.
 ```
-
-#### Testing Commands
-
-```bash
-# Run E2E/API tests
-venv/bin/python -m pytest -m e2e -v
-
-# Run integration tests for presentation
-venv/bin/python -m pytest -m integration -v
-
-# Run all with coverage
-venv/bin/python -m pytest --cov=app --cov-report=html --cov-fail-under=85
-```
-
-### Step 6 – Update JSON with Generated Paths
-
-Add `code_path`, `code_raw_url`, and for routers optionally `register_path` (where to include router) and tests.
-
-- Raw URL format: `https://raw.githubusercontent.com/Kira7dn/fastapi_template/main/{path}`
-
-**Sample Updated JSON**:
-
-```json
-[
-  {
-    "class_name": "Product",
-    "layer": "presentation/schema",
-    "code_path": "backend/app/presentation/api/v1/schemas/product.py",
-    "code_raw_url": "https://raw.githubusercontent.com/Kira7dn/fastapi_template/main/backend/app/presentation/api/v1/schemas/product.py"
-  },
-  {
-    "class_name": "ProductDependencies",
-    "layer": "presentation/dependency",
-    "code_path": "backend/app/presentation/api/v1/dependencies/product.py",
-    "code_raw_url": "https://raw.githubusercontent.com/Kira7dn/fastapi_template/main/backend/app/presentation/api/v1/dependencies/product.py"
-  },
-  {
-    "class_name": "ProductRouter",
-    "layer": "presentation/router",
-    "code_path": "backend/app/presentation/api/v1/routers/product.py",
-    "code_raw_url": "https://raw.githubusercontent.com/Kira7dn/fastapi_template/main/backend/app/presentation/api/v1/routers/product.py",
-    "test_path": "backend/tests/e2e/test_product_api.py",
-    "test_raw_url": "https://raw.githubusercontent.com/Kira7dn/fastapi_template/main/backend/tests/e2e/test_product_api.py",
-    "register_path": "backend/app/presentation/main.py"
-  }
-]
-```
-
-## Notes
-
-- Endpoints must remain thin: validate input, call Use Case, return schema.
-- Use dependency overrides in tests to isolate external systems.
-- Keep request/response models stable; version APIs as needed (e.g., under `api/v1/`).

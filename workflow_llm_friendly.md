@@ -26,6 +26,14 @@ Optimized for **LLM-assisted development**: structured, consistent, and easy to 
   - `httpx.AsyncClient` for API E2E
 - DB sessions: short-lived, per-request (`app/core/db.py::get_db`).
 
+### Naming & Pluralization Rules
+
+- Resource names use snake_case; collections use plural snake_case.
+  - Examples: `user -> users`, `order -> orders`, `product_category -> product_categories`.
+  - Irregulars map: `person -> people`, `category -> categories`.
+- Routers: set `APIRouter(prefix="/{plural}")`; then use empty path for collection create (`@router.post("")`).
+- SQLAlchemy `__tablename__`: plural snake_case of model name (trim trailing `Model`). See Infra Persistence workflow.
+
 ---
 
 ## II. Directory Map
@@ -49,9 +57,13 @@ backend/app/
 │   ├── api/v1/routers/
 │   ├── api/v1/schemas/
 │   └── main.py
-├── core/config.py
+└── core/
+    └── config.py
+
+backend/
 └── alembic/
 ```
+Note: Alembic lives at `backend/alembic/` (not inside `backend/app/`).
 
 ---
 
@@ -150,6 +162,8 @@ class ProductRecommendationService:
 - Define use cases that inject repos and call services.
 - Risks: Complex use cases create tight coupling (solution: keep orchestration simple and mockable); Unvalidated AI inputs (solution: Pydantic in entities).
 
+Tip: Tests should use realistic fakes over heavy mocks. See Appendix in `generate-application-class.md` for fake repo patterns.
+
 **[Sample Code]**
 
 - **Interfaces**
@@ -171,7 +185,7 @@ class IProductRepository(ABC):
 - **Use Cases**
 
 ```python
-# backend/app/application/use_cases/product.py
+# backend/app/application/use_cases/create_product_use_case.py
 from app.application.interfaces.product import IProductRepository
 from app.domain.entities.product import Product
 
@@ -211,6 +225,7 @@ class CreateProductUseCase:
   - Implement idempotency for create operations using keys or input hashing.
   - Return plain dicts/DTOs, not raw SDK objects.
   - Create DI factories in `presentation/api/v1/dependencies/` for injection into endpoints.
+  - Type DI providers to Application interfaces (Protocols/ABCs), not concrete classes.
 
 - **Pipeline**:
   - When durability/observability needed: create models for `pipeline_runs`, `pipeline_steps`, `pipeline_artifacts`.
@@ -339,6 +354,28 @@ def get_transcriber():
 - Inject dependencies.
 - Use Pydantic for request/response schemas.
 
+Validation & Error Handling
+
+- Validate inputs with Pydantic schemas; prefer constrained types/validators.
+- Map domain/application errors to HTTP:
+  - `ValueError`/validation → 422/400
+  - `LookupError` → 404
+  - Permission errors → 403
+  - Unexpected → 500 (avoid leaking details)
+
+API Error Schema (suggested)
+
+```json
+{
+  "type": "string",
+  "title": "string",
+  "detail": "string",
+  "status": 400,
+  "instance": "string",
+  "errors": {"field": ["message"]}
+}
+```
+
 **[Action]**
 
 - Define schemas.
@@ -382,13 +419,13 @@ def get_product_repo(db: Session = Depends(get_db)):
 ```python
 # backend/app/presentation/api/v1/routers/product.py
 from fastapi import APIRouter, Depends
-from app.application.use_cases.product import CreateProductUseCase
+from app.application.use_cases.create_product_use_case import CreateProductUseCase
 from app.presentation.api.v1.dependencies.product import get_product_repo
 from app.presentation.api.v1.schemas.product import CreateProductRequest, ProductResponse
 
-router = APIRouter()
+router = APIRouter(prefix="/products")  # prefix set once at router
 
-@router.post("/products", response_model=ProductResponse)
+@router.post("", response_model=ProductResponse, status_code=201)  # empty path to avoid duplicating prefix
 def create_product(request: CreateProductRequest, repo=Depends(get_product_repo)):
     product = CreateProductUseCase(repo).execute(
         request.name, request.category, request.price_range
@@ -422,9 +459,9 @@ test_case:
 **[Sample Code]**
 
 ```python
-# tests/unit/test_create_product_use_case.py
+# backend/tests/unit/application/test_use_case_create_product.py
 import pytest
-from app.application.use_cases.product import CreateProductUseCase
+from app.application.use_cases.create_product_use_case import CreateProductUseCase
 from app.domain.entities.product import Product
 
 class InMemoryRepo:
@@ -445,7 +482,7 @@ def test_create_product():
 ```
 
 ```python
-# tests/integration/test_payment_integration.py
+# backend/tests/integration/test_payment_integration.py
 import pytest
 from httpx import AsyncClient
 from app.presentation.main import app
@@ -461,8 +498,8 @@ async def test_create_payment_intent():
             return {"type": "payment_intent.succeeded"}
 
     # Override dependency for testing
-    from app.presentation.api.v1.dependencies.payment import get_payment_gateway
-    app.dependency_overrides[get_payment_gateway] = lambda: FakeGateway()
+    from app.presentation.api.v1.dependencies.payment import get_stripe_client
+    app.dependency_overrides[get_stripe_client] = lambda: FakeGateway()
 
     async with AsyncClient(app=app, base_url="http://test") as ac:
         res = await ac.post("/payments/intents", json={"amount_cents": 1000, "currency": "usd", "metadata": {}})
@@ -474,7 +511,7 @@ async def test_create_payment_intent():
 ```
 
 ```python
-# tests/e2e/test_product_api.py
+# backend/tests/e2e/test_product_api.py
 import pytest
 from httpx import AsyncClient
 from app.presentation.main import app
@@ -486,7 +523,7 @@ async def test_product_crud_flow():
         # Create product
         create_data = {"name": "Laptop", "category": "electronics", "price_range": "high"}
         res = await ac.post("/products", json=create_data)
-        assert res.status_code == 200
+        assert res.status_code == 201
         product = res.json()
         assert product["name"] == "Laptop"
         assert product["id"] > 0
@@ -496,16 +533,16 @@ async def test_product_crud_flow():
 
 ```bash
 # Run unit tests only (fast)
-venv/bin/python -m pytest -m "not integration" -v
+venv/bin/python -m pytest -q -m "not integration"
 
 # Run integration tests
-venv/bin/python -m pytest -m integration -v
+venv/bin/python -m pytest -q -m integration
 
 # Run all tests with coverage
-venv/bin/python -m pytest --cov=app --cov-report=html --cov-fail-under=85
+venv/bin/python -m pytest -q --cov=backend/app --cov-report=html --cov-fail-under=85
 
 # Run specific test file
-venv/bin/python -m pytest tests/unit/test_create_product_use_case.py -v
+venv/bin/python -m pytest -q backend/tests/unit/application/test_use_case_create_product.py
 ```
 
 ---

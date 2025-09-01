@@ -1,10 +1,12 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict
 
 
 class CreatePaymentIntentRequest(BaseModel):
     amount_cents: int = Field(..., ge=1, description="Amount in cents")
-    currency: Optional[str] = Field(None, description="ISO currency code, default from settings")
+    currency: Optional[str] = Field(
+        None, description="ISO currency code, default from settings"
+    )
     metadata: Optional[Dict[str, str]] = None
 
 

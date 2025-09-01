@@ -10,7 +10,7 @@ from app.presentation.api.v1.routers import user
 
 app = FastAPI(title="FastAPI Onion App")
 
-app.include_router(user.router, prefix="/users", tags=["users"])
+app.include_router(user.router, tags=["users"])
 
 
 def main():

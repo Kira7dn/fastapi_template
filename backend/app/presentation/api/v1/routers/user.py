@@ -12,10 +12,10 @@ from app.presentation.api.v1.schemas.user import (
 )
 
 
-router = APIRouter()
+router = APIRouter(prefix="/users")
 
 
-@router.post("/users/", response_model=UserResponse)
+@router.post("", response_model=UserResponse)
 def create_user(request: CreateUserRequest, repo=Depends(get_user_repo)):
     use_case = CreateUserUseCase(repo)
     user = use_case.execute(request.name, request.email, request.preferences)
